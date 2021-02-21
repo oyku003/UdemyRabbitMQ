@@ -4,6 +4,7 @@ using System.Text;
 
 namespace UdemyRabbitMQ.Publisher
 {
+    //Critical.Error.Info Info.Warning.Critical
     public enum LogNames
     {
         Critical = 1,
@@ -11,61 +12,47 @@ namespace UdemyRabbitMQ.Publisher
         Info = 3,
         Warning = 4
     }
-    class Program
+
+    internal class Program
     {
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
-            var factory = new ConnectionFactory { HostName="localhost"};//rabbitmq ile factory baglantısı için instance açtık
-            //factory.Uri = new Uri("http://localhost:15672");
+            var factory = new ConnectionFactory { HostName = "localhost" };
+            //factory.Uri = new Uri("amqp://mgujdhwy:XPjqFTiaVobxvbhF6q3AIK8H4gK251Ke@spider.rmq.cloudamqp.com/mgujdhwy");
 
             using (var connection = factory.CreateConnection())
             {
-                using (var channel= connection.CreateModel())
+                using (var channel = connection.CreateModel())
                 {
-                    //channel.QueueDeclare("hello", false, false, false, null);//durable:parametre memoryde mi tutsun yoksa diskte mi, exclusive:bir kanal mı bağlansın yoksa başka kanallar da bağlanabilsin mi ,autoDelete:kuyrukta eleman kalmayınca silinsin mi?
+                    channel.ExchangeDeclare("topic-exchange", durable: true, type: ExchangeType.Topic);
 
-                    //string message = "Hello word";
-
-                    //mesaj gönderilirken byte olarak gönderilmelidir.
-
-                    //var bodyByte = Encoding.UTF8.GetBytes(message);//mesajlar byte array olmak zorunda
-                    //channel.BasicPublish("", routingKey: "hello", null, bodyByte);//default exchange kullanılıyorsa (exchange'in boş geçilmesi durumu) yukarda belirttiğimiz que (hello) ile burada belirttiğimiz basicpublis içindeki route key parametresi aynı olmak zorunda
-
-                    /*Daha sağlam bi rabbit mq publisherı oluşturduk*/
-
-                    //channel.QueueDeclare("task_queue", durable: true, false, false, null);//durable =true vererek kuyrugu sağlama aldık//exchange kullanılmadığı zaman kullanılabilir.
-
-                    /*EXHANGE-> FANOUT*/
-                    //channel.ExchangeDeclare("logs",durable:true, type: ExchangeType.Fanout);
-                    //  string message = GetMessage(args);
-
-
-                    /*EXHANGE-> DIRECT*/
-                    channel.ExchangeDeclare("direct-exhange",durable:true, type: ExchangeType.Direct);
-
-                    Array logName = Enum.GetValues(typeof(LogNames));
+                    Array log_name_array = Enum.GetValues(typeof(LogNames));
 
                     for (int i = 1; i < 11; i++)
                     {
-                        Random rnm = new Random();
-                        LogNames log = (LogNames)logName.GetValue(rnm.Next(logName.Length));
+                        Random rnd = new Random();
 
-                        //var body = Encoding.UTF8.GetBytes($"{message}-{i}");
-                        var body = Encoding.UTF8.GetBytes($"log={log}");
-                        var properties = channel.CreateBasicProperties();//mesajı sağlama aldık
-                        properties.Persistent = true;//mesajı sağlama aldık
-                        //channel.BasicPublish("", routingKey: "task_queue", properties, body: body); exhagne olmayan kısım için gecerli
-                        channel.BasicPublish("direct-exhange", routingKey: log.ToString(), properties, body: body);
+                        LogNames log1 = (LogNames)log_name_array.GetValue(rnd.Next(log_name_array.Length));
+                        LogNames log2 = (LogNames)log_name_array.GetValue(rnd.Next(log_name_array.Length));
+                        LogNames log3 = (LogNames)log_name_array.GetValue(rnd.Next(log_name_array.Length));
 
-                        Console.WriteLine($"Log mesajı gönderilmiştir.{log}");
+                        string RoutingKey = $"{log1}.{log2}.{log3}";
+
+                        var bodyByte = Encoding.UTF8.GetBytes($"log={log1.ToString()}-{log2.ToString()}-{log3.ToString()}");
+
+                        var properties = channel.CreateBasicProperties();
+
+                        properties.Persistent = true;
+
+                        channel.BasicPublish("topic-exchange", routingKey: RoutingKey, properties, body: bodyByte);
+
+                        Console.WriteLine($"log mesajı gönderilmiştir=> mesaj:{RoutingKey}");
                     }
-                   
                 }
 
-                Console.WriteLine("Çıkış yapmak için tıklayınız");
-                Console.ReadLine();                
+                Console.WriteLine("Çıkış yapmak tıklayınız..");
+                Console.ReadLine();
             }
-
         }
 
         private static string GetMessage(string[] args)

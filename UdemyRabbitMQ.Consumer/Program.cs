@@ -1,90 +1,64 @@
-﻿using System;
+﻿using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
+using System;
 using System.IO;
 using System.Text;
 using System.Threading;
-using RabbitMQ.Client;
-using RabbitMQ.Client.Events;
 
 namespace UdemyRabbitMQ.Consumer
 {
     public enum LogNames
     {
-        Critical = 1,
-        Error = 2
+        Critical,
+        Error,
+        Warning
     }
 
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
-            var factory = new ConnectionFactory { HostName = "localhost" };//rabbitmq ile factory baglantısı için instance açtık
-            //factory.Uri = new Uri("http://localhost:15672");
+            var factory = new ConnectionFactory { HostName = "localhost" };
+            //factory.Uri = new Uri("amqp://mgujdhwy:XPjqFTiaVobxvbhF6q3AIK8H4gK251Ke@spider.rmq.cloudamqp.com/mgujdhwy");
 
-            using var connection = factory.CreateConnection();
-            using (var channel = connection.CreateModel())
+            using (var connection = factory.CreateConnection())
             {
-                //channel.QueueDeclare("hello", false, false, false, null);
-                ////consumer tarafı ile publisher burada aynı olmalı yoksa kuyruktaki mesajları alamayız!!
-                ////durable:parametre memoryde mi tutsun yoksa diskte mi, exclusive:bir kanal mı bağlansın yoksa başka kanallar da bağlanabilsin mi ,autoDelete:kuyrukta eleman kalmayınca silinsin mi?
-
-                //var consumer = new EventingBasicConsumer(channel);
-
-                //channel.BasicConsume("hello", true, consumer);
-                ////autoack: mesajın doğru ya da yanlış işlenmesine bağlı olmadan kuyruktan silinip silinmeyecegini belirler
-
-                //consumer.Received += (model, ea) =>
-                //{
-                //    var message = Encoding.UTF8.GetString(ea.Body.ToArray());//kuyruktaki mesajı byte olarak aldık ve stringe cevirdik
-
-                //    Console.WriteLine($"Mesaj alındı: {message}");
-
-                //};
-
-                /*EXCHANGE OLMAYAN*/ /*Daha sağlam bi rabbit mq publisher'a ait consumer oluşturduk*/
-                //channel.QueueDeclare("task_queue", durable: true, false, false, null);
-
-                /*EXCHANGE-> FANOUT*/
-                //channel.ExchangeDeclare("logs", durable: true, type: ExchangeType.Fanout);
-                //var queueName = channel.QueueDeclare().QueueName;//her instance'de (her ayaga kalktığında) ayrı bir kuyruk ismi oluşsun diye
-                //channel.QueueBind(queue: queueName, exchange: "logs", routingKey: "");
-
-
-                /*EXCHANGE-> DIRECT*/
-                channel.ExchangeDeclare("direct-exhange", durable: true, type: ExchangeType.Direct);
-                var queueName = channel.QueueDeclare().QueueName;//her instance'de (her ayaga kalktığında) ayrı bir kuyruk ismi oluşsun diye
-
-                foreach (var item in Enum.GetNames(typeof(LogNames)))
+                using (var channel = connection.CreateModel())
                 {
-                    channel.QueueBind(queue: queueName, exchange: "direct-exhange", routingKey: item);
-                }    
+                    channel.ExchangeDeclare("topic-exchange", durable: true, type: ExchangeType.Topic);
 
-                channel.BasicQos(prefetchSize: 0, prefetchCount: 1, false);
-                //prefectcount: bir mesaj gelsin ve doğru şekilde halletim dedikten sonra diğerini gönder.İdeal olan 1'dir.
-                //global:tüm consumerları ilgilendirsin mi ilgilendirmesin mi.
+                    var queueName = channel.QueueDeclare().QueueName;
+                    Console.WriteLine("que name:" + queueName);
+                    string routingKey = "#.Warning";
 
-                Console.WriteLine("Critical ve Error Logları bekliyorum");
+                    channel.QueueBind(queue: queueName, exchange: "topic-exchange", routingKey: routingKey);
 
-                var consumer = new EventingBasicConsumer(channel);
-                channel.BasicConsume(queueName, autoAck: false, consumer);
+                    channel.BasicQos(prefetchSize: 0, prefetchCount: 1, false);
 
-                consumer.Received += (model, ea) =>
-                {
-                    var log = Encoding.UTF8.GetString(ea.Body.ToArray());
-                    Console.WriteLine($"Log alındı:{log}");
+                    Console.WriteLine("Custom log bekliyorum....");
 
-                        //farklı konfigurasyon kısmını simüle etmek için yaptık
+                    var consumer = new EventingBasicConsumer(channel);
+
+                    channel.BasicConsume(queueName, false, consumer);
+
+                    consumer.Received += (model, ea) =>
+                    {
+                        var log = Encoding.UTF8.GetString(ea.Body.ToArray());
+                        Console.WriteLine("log alındı:" + log);
+
                         int time = int.Parse(GetMessage(args));
-                    Thread.Sleep(time);
-                    File.AppendAllText("logs_critical_error.txt", log+"\n");//direct için
-                    Console.WriteLine($"Loglama bitti");
-                    channel.BasicAck(ea.DeliveryTag, multiple: false);//mesajı başarıyla işledim artık kuyruktan silebilirsin.
-                 };
+                        Thread.Sleep(time);
+
+                        File.AppendAllText("logs_critical_error.txt", log + "\n");
+
+                        Console.WriteLine("loglama bitti");
+
+                        channel.BasicAck(ea.DeliveryTag, multiple: false);
+                    };
+                    Console.WriteLine("Çıkış yapmak tıklayınız..");
+                    Console.ReadLine();
+                }
             }
-
-            Console.WriteLine("Çıkış yapmak için tıklayınız");
-            Console.ReadLine();
-
-
         }
 
         private static string GetMessage(string[] args)
